@@ -1,28 +1,22 @@
 package com.EFlyer.Bookings.YpsilonApiDocs;
 
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import reactor.netty.http.HttpProtocol;
-import reactor.netty.http.client.HttpClient;
+import lombok.Data;
 
-import java.time.Duration;
+import java.util.Map;
 
 
-@Configuration
-public class FlightApiConfig implements WebMvcConfigurer {
+@Data
+public class FlightApiConfig {
 
-    @Bean
-    public WebClient webClient(WebClient.Builder builder){
-        HttpClient httpClient = HttpClient.create().protocol(HttpProtocol.HTTP11).responseTimeout(Duration.ofSeconds(20));
-        return builder.clientConnector(new ReactorClientHttpConnector(httpClient))
-                .defaultHeader("Content-Type","application/xml")
-                .defaultHeader("accept","application/xml")
-                .build();
-    }
+    public static Map<String,String> Ypsilon_headers = Map.of(
+            "Content-Type","application/xml",
+            "Accept","application/xml",
+            "Accept-Encoding", "gzip, deflate",
+            "api-version", "3.92",
+            "accessmode", "agency",
+            "accessid", "eflycha eflycha",
+            "authmode", "pwd",
+            "Connection", "close",
+            "Authorization", "Basic ZWZseWNoOlFSWlRDdWM5OExfSUpDVmRZRGxrZnVXQVEyd0pXbSFE");
 
 }
