@@ -1,7 +1,6 @@
 package com.EFlyer.Bookings.Service.impl;
 
 import com.EFlyer.Bookings.DTO.Requests.BookingDTO;
-import com.EFlyer.Bookings.DTO.Requests.CreditCardDetails;
 import com.EFlyer.Bookings.DTO.Requests.Passenger;
 import com.EFlyer.Bookings.DTO.Requests.PricingRequest;
 import com.EFlyer.Bookings.DTO.Responses.*;
@@ -19,12 +18,12 @@ import org.jsoup.nodes.Document;
 import org.jsoup.parser.Parser;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
-
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Service
@@ -44,6 +43,7 @@ public class FlightApiServiceImpl implements FlightApiService {
 
         getFareDetails_fromAPI(tarifDetailsList, doc);
         getFlightAndLegDetails_fromAPI(tarifDetailsList, doc);
+        getBaggageDetails_fromAPI(tarifDetailsList,doc);
         responseMap.put("Session", xmlResponseFromAPi.get("Session"));
         responseMap.put("xml_request",fareRequestXml);
         responseMap.put("body", tarifDetailsList);
@@ -59,6 +59,8 @@ public class FlightApiServiceImpl implements FlightApiService {
         Map<String, String> xml_response = flight_availability_xmlResponse(build_FlightBooking_xml_body(bookingDTO), session_id, "https://norristest.ypsilon.net:11025");
         Document bookingResponse_doc = Jsoup.parse(xml_response.get("response"), "", Parser.xmlParser());
         Elements bookingResponse_elements = bookingResponse_doc.getElementsByTag("bookingResponse");
+
+        System.out.println();
         bookingResponse_elements.forEach(element -> {
             bookingResponse.setSuccess_status(Boolean.valueOf(element.attr("success")));
             bookingResponse.setFileKey(element.attr("fileKey"));
@@ -84,7 +86,6 @@ public class FlightApiServiceImpl implements FlightApiService {
 
     response.put("booking_xml_request",build_FlightBooking_xml_body(bookingDTO));
     response.put("booking_response",bookingResponse);
-    System.out.println(response.get("booking_response"));
     return response;
     //flight_availability_xmlResponse(build_FlightBooking_xml_body(bookingDTO),session_id,"https://norristest.ypsilon.net:11025");
 
@@ -97,9 +98,11 @@ public class FlightApiServiceImpl implements FlightApiService {
         response.put("build_pricingRequest_xml_body",build_pricingRequest_xml_body(pricingRequest));
         return response;
     }
+
     public Map<String,String> flight_availability_xmlResponse(String fareRequestXml,String session_id,String url) {
 
         System.out.println(fareRequestXml);
+        System.out.println(session_id);
 
         Map<String,String> responseMap = new HashMap<>();
         try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
@@ -107,8 +110,9 @@ public class FlightApiServiceImpl implements FlightApiService {
             HttpPost httpPost = new HttpPost(url);
 
             // Set request headers
-            FlightApiConfig.Ypsilon_headers.forEach(httpPost::setHeader);
-            httpPost.setHeader("session", session_id);
+            FlightApiConfig flightApiConfig = new FlightApiConfig(session_id);
+            flightApiConfig.Ypsilon_headers.forEach(httpPost::setHeader);
+
 
             // Attach compressed entity
             HttpEntity entity = new StringEntity(fareRequestXml);
@@ -118,7 +122,6 @@ public class FlightApiServiceImpl implements FlightApiService {
             HttpResponse response = httpClient.execute(httpPost);
             responseMap.put("Session",response.getFirstHeader("Session").getElements()[0].toString());
             responseMap.put("response",EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8));
-
         } catch (Exception e) {
             e.printStackTrace();
             responseMap.put("Error Msg",e.getMessage());
@@ -196,6 +199,7 @@ public class FlightApiServiceImpl implements FlightApiService {
                     flight_elements.forEach(flight_element -> {
                         FlightDTO flightDTO = new FlightDTO();
                         flightDTO.setFlightId(flight_element.attr("flightId"));
+                        flightDTO.setAirways(tarifDetails.getAirways());
                         flightDTOList.add(flightDTO);
                     });
                     fareDTO.setFlightDTOS(flightDTOList);
@@ -254,13 +258,39 @@ public class FlightApiServiceImpl implements FlightApiService {
         });
     }
 
+    private void getBaggageDetails_fromAPI(List<TarifDetails> tarifDetailsList,Document doc) {
+        tarifDetailsList.forEach(tarifDetails -> tarifDetails.getFareDTOList().forEach(
+                fareDTO -> fareDTO.getFlightDTOS().forEach(flightDTO -> {
+                    AtomicInteger flightDTO_fba = new AtomicInteger(1);
+                    flightDTO.getLegDTOS().forEach(legDTO -> {
+                        String legXRefId = doc.getElementsByAttributeValue("legId", legDTO.getLegId()).attr("legXRefId");
+                        legDTO.setBaggage_code(doc.getElementsByAttributeValue("elemId", legXRefId).attr("serviceID"));
+                        int legDTO_fba = Integer.parseInt(legDTO.getBaggage_code().substring(4));
 
+                        List<Map<String, String>> baggageOptions = List.of(
+                                Map.of("FBA_1", "2 * 23 kg luggage & Hand luggage"),
+                                Map.of("FBA_2", "1 * 20 kg luggage & Hand luggage"),
+                                Map.of("FBA_3", "1 or 2 * 23 kg luggage & Hand luggage"),
+                                Map.of("FBA_4", "2 * 20 kg luggage & Hand luggage"),
+                                Map.of("FBA_5", "7kg Hand luggage only"),
+                                Map.of("FBA_6", "Custom luggage")
+                        );
+
+                        if (flightDTO_fba.get() < legDTO_fba) {
+                            flightDTO_fba.set(legDTO_fba);
+                            flightDTO.setBaggage(baggageOptions.get(legDTO_fba-1));
+                            System.out.println("TarifId :- "+tarifDetails.getTarifId()+" "+legDTO.getBaggage_code());
+                        } else {
+                            flightDTO.setBaggage(baggageOptions.get(flightDTO_fba.get()-1));
+                        }
+                    });
+                })));
+    }
 
     private String build_FlightBooking_xml_body(BookingDTO bookingDTO){
         String passenger_xml_body = build_passengerXmlBody_flightBooking(bookingDTO.getCo_passengers());
 
         Passenger passenger = bookingDTO.getBilling_passenger();
-        CreditCardDetails creditCardDetails = new CreditCardDetails();
 
         return String.format(
                         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
@@ -294,10 +324,16 @@ public class FlightApiServiceImpl implements FlightApiService {
     }
 
     private String build_passengerXmlBody_flightBooking(List<Passenger> passengerList){
+        StringBuilder stringBuilder = new StringBuilder();
+        passengerList.forEach(passenger -> {
+            String co_passenger = String.format("<pax surname=\"%s\" firstname=\"%s\" dob=\"%s\" gender=\"%s\"/> \n",
+                    passenger.getLastName(),passenger.getFirstName(),passenger.getDob(),passenger.getGender());
+            stringBuilder.append(co_passenger);
+        });
 
-        String xml_body = " <pax surname=\"Tester\" firstname=\"John\" dob=\"1985-09-12\" gender=\"M\"/> \n";
+        String xml_body = "<pax surname=\"Tester\" firstname=\"John\" dob=\"1985-09-12\" gender=\"M\"/> \n";
 
-        return xml_body;
+        return stringBuilder.toString();
 
     }
 
@@ -341,7 +377,6 @@ public class FlightApiServiceImpl implements FlightApiService {
                         "  <cos>"+flight_class+"</cos> \n" +
                         "  </coses>\n" +
                         "</fareRequest>",dep_apt,des_apt,dep_date,des_apt,dep_apt,des_date);
-        System.out.println(passenger_body);
         return xml_body;
     }
 

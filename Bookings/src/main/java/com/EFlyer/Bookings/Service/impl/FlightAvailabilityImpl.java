@@ -40,6 +40,7 @@ public class FlightAvailabilityImpl implements FlightAvailabilityService {
         String minRtnTime = fareRequestFilterDTO.getMinRtnTime();
         String maxRtnTime = fareRequestFilterDTO.getMaxRtnTime();
         String duration = fareRequestFilterDTO.getDuration();
+        String baggage_code = fareRequestFilterDTO.getBaggage_code();
 
         Map<String, Object> responses = new HashMap<>();
 
@@ -62,6 +63,8 @@ public class FlightAvailabilityImpl implements FlightAvailabilityService {
                     }
             );
 
+            if (baggage_code != null) baggageFiltering(tarifDetailsList_fromAPI,baggage_code);
+
             if (minPrice != null && maxPrice != null){
                 tarifDetailsList_fromAPI = tarifDetailsList_fromAPI.stream().filter(tarifDetails ->
                         tarifDetails.getTarifPriceDetails().getTaxAndSell_adt() >= minPrice &&
@@ -76,10 +79,27 @@ public class FlightAvailabilityImpl implements FlightAvailabilityService {
             responses.put("Session",flightAPI_responses.get("Session"));
 
         }catch (Exception e){
-            System.out.println(e.getMessage());
+            e.printStackTrace();
         }
 
         return responses;
+    }
+
+    void baggageFiltering(List<TarifDetails> tarifDetailsListFromAPI, String baggageCode) {
+
+        tarifDetailsListFromAPI.forEach(tarifDetails -> tarifDetails.setFareDTOList(
+                tarifDetails.getFareDTOList().stream().peek(fareDTO -> fareDTO.setFlightDTOS(
+                                fareDTO.getFlightDTOS().stream()
+                                        .filter(flightDTO->flightDTO.getBaggage().containsKey(baggageCode))
+                                        .collect(Collectors.toList())
+                        ))
+                        .filter(fareDTO -> !fareDTO.getFlightDTOS().isEmpty()).collect(Collectors.toList())
+        ));
+
+        tarifDetailsListFromAPI.removeIf(tarifDetails -> tarifDetails.getFareDTOList().isEmpty());
+
+
+
     }
 
     TarifDetails price_calculation(Map<String,Integer> passengerType_map, TarifDetails tarifDetails){

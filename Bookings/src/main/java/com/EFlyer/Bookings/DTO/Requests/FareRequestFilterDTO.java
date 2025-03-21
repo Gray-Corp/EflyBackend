@@ -23,6 +23,5 @@ public class FareRequestFilterDTO {
     private String minRtnTime;
     private String maxRtnTime;
     private String duration;
-
-
+    private String baggage_code;
 }

@@ -17,6 +17,7 @@ public class LegDTO {
     private String flight_class;
     private String distance_miles;
     private Double distance_km;
+    private String baggage_code;
     private String fno;
     private String stops;
     private String seats_available;
